@@ -1,105 +1,195 @@
 import customtkinter as ctk
 import subprocess
 import platform
+import sys
+import requests
+import time
 
 ctk.set_appearance_mode("dark")
-ctk.set_default_color_theme("green")
 
 MSF = "msfconsole"
+
+ASCII = """
+███████╗ █████╗ ███████╗██╗   ██╗███████╗██████╗ ██╗      ██████╗ ██╗████████╗
+██╔════╝██╔══██╗██╔════╝╚██╗ ██╔╝██╔════╝██╔══██╗██║     ██╔═══██╗██║╚══██╔══╝
+█████╗  ███████║███████╗ ╚████╔╝ █████╗  ██████╔╝██║     ██║   ██║██║   ██║
+██╔══╝  ██╔══██║╚════██║  ╚██╔╝  ██╔══╝  ██╔═══╝ ██║     ██║   ██║██║   ██║
+███████╗██║  ██║███████║   ██║   ███████╗██║     ███████╗╚██████╔╝██║   ██║
+╚══════╝╚═╝  ╚═╝╚══════╝   ╚═╝   ╚══════╝╚═╝     ╚═════╝ ╚═════╝ ╚═╝   ╚═╝
+"""
 
 class EasySploit(ctk.CTk):
 
     def __init__(self):
         super().__init__()
 
+        self.geometry("1100x720")
         self.title("easySploit")
-        self.geometry("1100x700")
 
-        self.target = ctk.StringVar()
+        # TARGET BAR
+        self.target = ctk.CTkEntry(self, placeholder_text="TARGET")
+        self.target.pack(fill="x", padx=10, pady=5)
 
-        self.sidebar = ctk.CTkFrame(self, width=220)
-        self.sidebar.pack(side="left", fill="y")
+        # MENU
+        menu = ctk.CTkFrame(self)
+        menu.pack(pady=5)
 
-        ctk.CTkLabel(self.sidebar, text="easySploit", font=("Consolas", 22)).pack(pady=15)
+        buttons = ["HOME","PAYLOADS","EXPLOITS","SCANNERS","SESSIONS",
+                   "WEB TEST","MSFCONSOLE","HELP","DEBUG"]
 
-        ctk.CTkEntry(self.sidebar, textvariable=self.target, placeholder_text="TARGET IP").pack(pady=10, padx=10)
+        for name in buttons:
+            ctk.CTkButton(menu, text=name,
+                          command=lambda n=name: self.load(n)).pack(side="left", padx=4)
 
-        self.add_btn("Port Scan", "auxiliary/scanner/portscan/tcp")
-        self.add_btn("SMB Scan", "auxiliary/scanner/smb/smb_version")
-        self.add_btn("FTP Login", "auxiliary/scanner/ftp/ftp_login")
-        self.add_btn("Multi Handler", "exploit/multi/handler")
+        # ASCII BANNER
+        self.banner = ctk.CTkTextbox(self, height=200)
+        self.banner.pack(fill="x", padx=10)
+        self.banner.insert("0.0", ASCII)
 
-        ctk.CTkButton(self.sidebar, text="Sessions",
-                      command=lambda: self.run_msf("sessions")).pack(pady=10, fill="x")
+        # MAIN PANEL
+        self.main = ctk.CTkScrollableFrame(self)
+        self.main.pack(expand=True, fill="both", padx=10, pady=10)
 
-        self.main = ctk.CTkFrame(self)
-        self.main.pack(expand=True, fill="both")
+        self.home()
 
-        self.terminal = ctk.CTkTextbox(self, height=150)
-        self.terminal.pack(fill="x")
+    # ================= HOME =================
 
-    def add_btn(self, name, module):
-        ctk.CTkButton(self.sidebar, text=name,
-                      command=lambda: self.load_module(module)).pack(pady=5, fill="x")
-
-    # =============================
-
-    def run_msf(self, command):
-        self.terminal.insert("end", f"\n> {command}\n")
-        subprocess.Popen([MSF, "-q", "-x", command])
-
-    # =============================
-
-    def load_module(self, module):
+    def home(self):
 
         for w in self.main.winfo_children():
             w.destroy()
 
-        ctk.CTkLabel(self.main, text=module, font=("Consolas", 18)).pack(pady=10)
+        status = self.check_msf()
 
-        output = subprocess.getoutput(f"{MSF} -q -x 'use {module}; show options; exit'")
+        ctk.CTkLabel(self.main, text="WELCOME TO easySploit", font=("Consolas", 20)).pack(pady=10)
+        ctk.CTkLabel(self.main, text=f"Metasploit Status: {status}").pack(pady=5)
+        ctk.CTkLabel(self.main, text=f"OS: {platform.system()}").pack(pady=5)
+        ctk.CTkLabel(self.main, text=f"Python: {sys.version.split()[0]}").pack(pady=5)
 
-        self.entries = {}
+        ctk.CTkButton(self.main, text="Start msfconsole",
+                      command=lambda: subprocess.Popen([MSF])).pack(pady=10)
 
-        for line in output.split("\n"):
-            if "required" in line.lower():
-                parts = line.split()
-                opt = parts[0]
+    # ================= MENU LOADER =================
 
-                frame = ctk.CTkFrame(self.main)
-                frame.pack(fill="x", padx=20, pady=2)
+    def load(self, section):
 
-                ctk.CTkLabel(frame, text=opt, width=150, anchor="w").pack(side="left")
+        if section == "HOME":
+            self.home()
+            return
 
-                entry = ctk.CTkEntry(frame)
-                entry.pack(side="right", expand=True, fill="x")
+        for w in self.main.winfo_children():
+            w.destroy()
 
-                if opt.upper() == "RHOSTS" and self.target.get():
-                    entry.insert(0, self.target.get())
+        if section == "PAYLOADS":
+            data = self.msf("show payloads")
 
-                self.entries[opt] = entry
+        elif section == "EXPLOITS":
+            data = self.msf("search type:exploit")
 
-        ctk.CTkButton(self.main, text="RUN", fg_color="green",
-                      command=lambda: self.execute(module)).pack(pady=15)
+        elif section == "SCANNERS":
+            data = self.msf("search type:auxiliary")
 
-    # =============================
+        elif section == "SESSIONS":
+            subprocess.Popen([MSF, "-q", "-x", "sessions"])
+            return
 
-    def execute(self, module):
+        elif section == "WEB TEST":
+            self.web_test_ui()
+            return
 
-        cmd = f"use {module}; "
+        elif section == "MSFCONSOLE":
+            subprocess.Popen([MSF])
+            return
 
-        for opt, entry in self.entries.items():
-            val = entry.get()
-            if val:
-                cmd += f"set {opt} {val}; "
+        elif section == "HELP":
+            data = self.help_text()
 
-        cmd += "run"
+        elif section == "DEBUG":
+            data = self.debug_info()
 
-        self.run_msf(cmd)
+        else:
+            data = ""
 
-# =============================
+        box = ctk.CTkTextbox(self.main)
+        box.pack(expand=True, fill="both")
+        box.insert("0.0", data)
 
-if __name__ == "__main__":
-    print("Running on:", platform.system())
-    app = EasySploit()
-    app.mainloop()
+    # ================= MSF =================
+
+    def msf(self, cmd):
+        return subprocess.getoutput(f"{MSF} -q -x '{cmd}; exit'")
+
+    def check_msf(self):
+        try:
+            out = subprocess.getoutput(f"{MSF} -v")
+            return "🟢 READY" if "Framework" in out else "🔴 NOT FOUND"
+        except:
+            return "🔴 NOT FOUND"
+
+    # ================= HELP =================
+
+    def help_text(self):
+        return """
+scan → find service → exploit → session → post
+
+PAYLOADS = shells
+EXPLOITS = break in
+SCANNERS = discovery
+SESSIONS = control target
+WEB TEST = test your website security
+"""
+
+    # ================= DEBUG =================
+
+    def debug_info(self):
+
+        pip = subprocess.getoutput("python -m pip --version")
+
+        msf = subprocess.getoutput(f"{MSF} -v")
+
+        return f"""
+OS: {platform.system()}
+Python: {sys.version}
+
+Pip:
+{pip}
+
+Metasploit:
+{msf}
+"""
+
+    # ================= WEB TEST =================
+
+    def web_test_ui(self):
+
+        url = ctk.CTkEntry(self.main, placeholder_text="https://target-site.com")
+        url.pack(fill="x", pady=5)
+
+        output = ctk.CTkTextbox(self.main, height=350)
+        output.pack(expand=True, fill="both", pady=10)
+
+        def status():
+            try:
+                start = time.time()
+                r = requests.get(url.get(), timeout=10)
+                ms = round((time.time() - start) * 1000, 2)
+                output.insert("end", f"\nStatus: {r.status_code} | {ms} ms\n")
+            except Exception as e:
+                output.insert("end", f"\nError: {e}\n")
+
+        def headers():
+            try:
+                r = requests.get(url.get(), timeout=10)
+                output.insert("end", "\n--- HEADERS ---\n")
+                for h in ["Content-Security-Policy","X-Frame-Options",
+                          "Strict-Transport-Security"]:
+                    output.insert("end", f"{h}: {r.headers.get(h,'Missing')}\n")
+            except Exception as e:
+                output.insert("end", f"\nError: {e}\n")
+
+        ctk.CTkButton(self.main, text="Check Status", command=status).pack(pady=2)
+        ctk.CTkButton(self.main, text="Analyze Headers", command=headers).pack(pady=2)
+
+# ================= RUN =================
+
+EasySploit().mainloop()
